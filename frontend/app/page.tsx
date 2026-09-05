@@ -290,13 +290,17 @@ export default function Home() {
   async function savePostcode() {
     try {
       setError("");
+      const body = postcodeEditCode
+        ? postcodeForm
+        : { zone_name: postcodeForm.zone_name, emirate: postcodeForm.emirate, status: postcodeForm.status };
+
       await api(
         postcodeEditCode
           ? `/api/v1/postcodes/${encodeURIComponent(postcodeEditCode)}`
           : "/api/v1/postcodes",
         {
           method: postcodeEditCode ? "PUT" : "POST",
-          body: JSON.stringify(postcodeForm),
+          body: JSON.stringify(body),
         }
       );
 
@@ -814,15 +818,19 @@ export default function Home() {
 
       <Modal title={postcodeEditCode ? "Edit Postcode" : "Add Postcode"} open={postcodeModalOpen} onClose={() => setPostcodeModalOpen(false)}>
         <div className="formgrid">
-          <div className="formgroup">
-            <label>Postcode</label>
-            <input value={postcodeForm.postal_code} disabled={!!postcodeEditCode} onChange={(e) => setPostcodeForm({ ...postcodeForm, postal_code: e.target.value })} />
-          </div>
+          {postcodeEditCode && (
+            <>
+              <div className="formgroup">
+                <label>Postcode</label>
+                <input value={postcodeForm.postal_code} disabled />
+              </div>
 
-          <div className="formgroup">
-            <label>Zone ID</label>
-            <input value={postcodeForm.zone_id} onChange={(e) => setPostcodeForm({ ...postcodeForm, zone_id: e.target.value })} />
-          </div>
+              <div className="formgroup">
+                <label>Zone ID</label>
+                <input value={postcodeForm.zone_id} onChange={(e) => setPostcodeForm({ ...postcodeForm, zone_id: e.target.value })} />
+              </div>
+            </>
+          )}
 
           <div className="formgroup full">
             <label>Zone / Area Name</label>
@@ -831,7 +839,15 @@ export default function Home() {
 
           <div className="formgroup">
             <label>Emirate</label>
-            <input value={postcodeForm.emirate} onChange={(e) => setPostcodeForm({ ...postcodeForm, emirate: e.target.value })} />
+            <select value={postcodeForm.emirate} onChange={(e) => setPostcodeForm({ ...postcodeForm, emirate: e.target.value })}>
+              <option>Dubai</option>
+              <option>Abu Dhabi</option>
+              <option>Sharjah</option>
+              <option>Ajman</option>
+              <option>Umm Al Quwain</option>
+              <option>Ras Al Khaimah</option>
+              <option>Fujairah</option>
+            </select>
           </div>
 
           <div className="formgroup">
@@ -843,6 +859,9 @@ export default function Home() {
           </div>
         </div>
 
+        {!postcodeEditCode && (
+          <p className="smallnote">Postcode and Zone ID are generated automatically from the selected Emirate once you save (e.g. DXB-10458 / Z-DXB-09).</p>
+        )}
         <p className="smallnote">Grid assignments remain based on grid records. Editing a postcode updates the linked zone/postcode reference used across grids and addresses.</p>
 
         <div className="formactions">

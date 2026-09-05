@@ -11,6 +11,13 @@ class ZoneBase(BaseModel):
 class ZoneCreate(ZoneBase):
     pass
 
+class ZoneAutoCreate(BaseModel):
+    """zone_id and postal_code are server-generated; the caller only supplies
+    the human-facing fields."""
+    zone_name: str
+    emirate: str = "Dubai"
+    status: str = "Active"
+
 class ZoneOut(ZoneBase):
     id: int
     grid_count: int = 0

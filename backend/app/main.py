@@ -10,9 +10,51 @@ from . import geocoding
 from .database import get_db
 from .models import PostalZone, PostalGrid, Address
 from .schemas import (
-    ZoneCreate, ZoneOut, GridCreate, GridOut, AddressCreate, AddressOut, SpatialResolveOut,
+    ZoneCreate, ZoneAutoCreate, ZoneOut, GridCreate, GridOut, AddressCreate, AddressOut, SpatialResolveOut,
     CanonicalS42Out, GeocodeOut, ReverseGeocodeOut, GeocodeComponents,
 )
+
+EMIRATE_CODES = {
+    "Dubai": "DXB",
+    "Abu Dhabi": "AUH",
+    "Sharjah": "SHJ",
+    "Ajman": "AJM",
+    "Umm Al Quwain": "UAQ",
+    "Ras Al Khaimah": "RAK",
+    "Fujairah": "FUJ",
+}
+
+def generate_zone_identifiers(db: Session, emirate: str) -> tuple[str, str]:
+    """Auto-generate a unique zone_id (Z-<emirate code>-<NN>) and postal_code
+    (<emirate code>-<NNNNN>), following the same structured, emirate-coded
+    pattern used throughout the seed data, rather than free-typed values."""
+    code = EMIRATE_CODES.get(emirate.strip(), (emirate.strip()[:3] or "GEN").upper())
+
+    zone_nums = []
+    for (zid,) in db.query(PostalZone.zone_id).filter(PostalZone.zone_id.like(f"Z-{code}-%")).all():
+        m = re.match(rf"^Z-{re.escape(code)}-(\d+)$", zid)
+        if m:
+            zone_nums.append(int(m.group(1)))
+    next_zone_num = max(zone_nums, default=0) + 1
+
+    pc_nums = []
+    for (pc,) in db.query(PostalZone.postal_code).filter(PostalZone.postal_code.like(f"{code}-%")).all():
+        m = re.match(rf"^{re.escape(code)}-(\d+)$", pc)
+        if m:
+            pc_nums.append(int(m.group(1)))
+    next_pc_num = max(pc_nums, default=9999) + 1
+
+    zone_id = f"Z-{code}-{next_zone_num:02d}"
+    while db.query(PostalZone).filter(PostalZone.zone_id == zone_id).first():
+        next_zone_num += 1
+        zone_id = f"Z-{code}-{next_zone_num:02d}"
+
+    postal_code = f"{code}-{next_pc_num}"
+    while db.query(PostalZone).filter(PostalZone.postal_code == postal_code).first():
+        next_pc_num += 1
+        postal_code = f"{code}-{next_pc_num}"
+
+    return zone_id, postal_code
 
 app = FastAPI(title="UAE Address & Postal Code API", version="1.0.0")
 
@@ -93,14 +135,19 @@ def list_postcodes(db: Session = Depends(get_db)):
     return out
 
 @app.post("/api/v1/postcodes", response_model=ZoneOut)
-def create_postcode(payload: ZoneCreate, db: Session = Depends(get_db)):
-    if db.query(PostalZone).filter(or_(PostalZone.zone_id == payload.zone_id, PostalZone.postal_code == payload.postal_code)).first():
-        raise HTTPException(409, "Zone ID or postcode already exists")
-    z = PostalZone(**payload.model_dump())
+def create_postcode(payload: ZoneAutoCreate, db: Session = Depends(get_db)):
+    zone_id, postal_code = generate_zone_identifiers(db, payload.emirate)
+    z = PostalZone(
+        zone_id=zone_id, zone_name=payload.zone_name, postal_code=postal_code,
+        emirate=payload.emirate, status=payload.status,
+    )
     db.add(z)
     db.commit()
     db.refresh(z)
-    return ZoneOut(id=z.id, **payload.model_dump(), grid_count=0, address_count=0)
+    return ZoneOut(
+        id=z.id, zone_id=zone_id, zone_name=payload.zone_name, postal_code=postal_code,
+        emirate=payload.emirate, status=payload.status, grid_count=0, address_count=0,
+    )
 
 @app.put("/api/v1/postcodes/{postal_code}", response_model=ZoneOut)
 def update_postcode(postal_code: str, payload: ZoneCreate, db: Session = Depends(get_db)):
