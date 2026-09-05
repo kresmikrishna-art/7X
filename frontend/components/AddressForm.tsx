@@ -115,48 +115,46 @@ export default function AddressForm({
   async function resolvePoint(lat: number, lng: number) {
     setForm((current) => ({ ...current, latitude: lat, longitude: lng }));
     setNotice("");
+    setError("");
+
+    let gridFound = false;
 
     try {
       const result = await api<any>(`/api/v1/spatial/resolve?lat=${lat}&lng=${lng}`);
 
-      if (!result.found) {
+      if (result.found) {
+        gridFound = true;
         setForm((current) => ({
           ...current,
-          grid_id: "",
-          zone_id: "",
-          postal_code: "",
+          grid_id: result.grid_id,
+          zone_id: result.zone_id,
+          postal_code: result.postal_code,
+          area_locality: result.area || current.area_locality,
         }));
+      } else {
+        setForm((current) => ({ ...current, grid_id: "", zone_id: "", postal_code: "" }));
         setError("The selected location is outside the configured postal grid.");
-        return;
       }
-
-      setError("");
-      setForm((current) => ({
-        ...current,
-        latitude: lat,
-        longitude: lng,
-        grid_id: result.grid_id,
-        zone_id: result.zone_id,
-        postal_code: result.postal_code,
-        area_locality: result.area || current.area_locality,
-      }));
     } catch (e: any) {
       setError(e.message || "Could not resolve map location.");
-      return;
     }
 
+    // Street/area/emirate come from Google independently of whether the point falls
+    // inside one of our seeded pilot grids, so this still runs even when it doesn't --
+    // only grid_id/zone_id/postal_code require being inside a configured grid.
     try {
       const rg = await api<any>(`/api/v1/reverse-geocode?lat=${lat}&lng=${lng}`);
-      setNotice("Fields below marked from Google reverse geocoding — review before saving.");
       setForm((current) => ({
         ...current,
-        street_name: rg.components.route || current.street_name,
+        street_name: rg.components.route,
         area_locality: rg.components.sublocality || rg.components.locality || current.area_locality,
         emirate_admin_area: rg.components.administrative_area || current.emirate_admin_area,
       }));
+      if (gridFound) {
+        setNotice("Fields below marked from Google reverse geocoding — review before saving.");
+      }
     } catch {
-      // Google geocoding is optional (needs GOOGLE_MAPS_API_KEY on the backend). Grid/zone/postcode
-      // resolution above already succeeded via PostGIS, so silently skip the Google enrichment.
+      // Google geocoding is optional (needs GOOGLE_MAPS_API_KEY on the backend) -- skip silently.
     }
   }
 
