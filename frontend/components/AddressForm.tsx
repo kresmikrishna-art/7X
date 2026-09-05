@@ -169,7 +169,18 @@ export default function AddressForm({
     try {
       const result = await api<any>(`/api/v1/geocode?address=${encodeURIComponent(geocodeQuery)}`);
       await resolvePoint(result.latitude, result.longitude);
-      setNotice(`Located via Google: ${result.formatted_address}`);
+
+      setForm((current) => ({
+        ...current,
+        building_name: geocodeQuery.trim(),
+        organization_name: result.is_business ? geocodeQuery.trim() : "",
+      }));
+
+      setNotice(
+        result.is_business
+          ? `Located "${geocodeQuery.trim()}" as a business via Google: ${result.formatted_address}`
+          : `Located via Google: ${result.formatted_address}`
+      );
     } catch (e: any) {
       setError(e.message || "Could not geocode that address.");
     } finally {

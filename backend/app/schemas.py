@@ -108,6 +108,7 @@ class GeocodeOut(BaseModel):
     longitude: float
     components: GeocodeComponents
     place_id: str | None = None
+    is_business: bool = False
 
 class ReverseGeocodeOut(BaseModel):
     formatted_address: str
@@ -115,6 +116,7 @@ class ReverseGeocodeOut(BaseModel):
     longitude: float
     components: GeocodeComponents
     place_id: str | None = None
+    is_business: bool = False
     grid_id: str | None = None
     zone_id: str | None = None
     postal_code: str | None = None

@@ -24,6 +24,8 @@ def _api_key() -> str:
         )
     return key
 
+BUSINESS_TYPES = {"establishment", "point_of_interest"}
+
 def _extract_components(address_components: list[dict]) -> dict:
     out = {v: "" for v in set(COMPONENT_MAP.values())}
     for c in address_components:
@@ -32,6 +34,12 @@ def _extract_components(address_components: list[dict]) -> dict:
                 out[COMPONENT_MAP[t]] = c.get("long_name", "")
                 break
     return out
+
+def _is_business(result: dict) -> bool:
+    """The Geocoding API only classifies a result as a business/POI via `types` --
+    it never returns the business's actual name (that needs the separate Places API),
+    so callers fall back to whatever text the user searched for as the name."""
+    return bool(BUSINESS_TYPES & set(result.get("types", [])))
 
 def _call_google(params: dict) -> dict:
     params = {**params, "key": _api_key()}
@@ -59,6 +67,7 @@ def forward_geocode(address: str) -> dict:
         "longitude": loc["lng"],
         "components": _extract_components(result.get("address_components", [])),
         "place_id": result.get("place_id"),
+        "is_business": _is_business(result),
     }
 
 def reverse_geocode(lat: float, lng: float) -> dict:
@@ -70,4 +79,5 @@ def reverse_geocode(lat: float, lng: float) -> dict:
         "longitude": loc["lng"],
         "components": _extract_components(result.get("address_components", [])),
         "place_id": result.get("place_id"),
+        "is_business": _is_business(result),
     }
