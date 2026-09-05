@@ -121,8 +121,10 @@ export default function Home() {
     loadAll();
   }, []);
 
-  async function runSearch(term?: string) {
+  async function runSearch(term?: string, modeOverride?: SearchMode) {
     const q = (term ?? query).trim();
+    const mode = modeOverride ?? searchMode;
+
     if (!q) {
       setSearchResults([]);
       return;
@@ -132,9 +134,9 @@ export default function Home() {
       setError("");
       let results = await api<Address[]>(`/api/v1/addresses/search?q=${encodeURIComponent(q)}`);
 
-      if (searchMode === "postcode") results = results.filter((a) => normalize(a.postal_code).includes(normalize(q)));
-      if (searchMode === "makani") results = results.filter((a) => normalize(a.makani_number).includes(normalize(q)));
-      if (searchMode === "onwani") results = results.filter((a) => normalize(a.onwani_reference).includes(normalize(q)));
+      if (mode === "postcode") results = results.filter((a) => normalize(a.postal_code).includes(normalize(q)));
+      if (mode === "makani") results = results.filter((a) => normalize(a.makani_number).includes(normalize(q)));
+      if (mode === "onwani") results = results.filter((a) => normalize(a.onwani_reference).includes(normalize(q)));
 
       setSearchResults(results);
       if (results.length) setSelectedAddress(results[0]);
@@ -143,12 +145,25 @@ export default function Home() {
     }
   }
 
+  function selectSearchMode(mode: SearchMode) {
+    setSearchMode(mode);
+    if (query.trim()) runSearch(query, mode);
+  }
+
   function submitTopSearch() {
     if (!topQuery.trim()) return;
     setQuery(topQuery);
     setSearchMode("all");
     setScreen("search");
-    runSearch(topQuery);
+    runSearch(topQuery, "all");
+  }
+
+  function viewAddress(address: Address) {
+    setSelectedAddress(address);
+    setQuery("");
+    setSearchMode("all");
+    setSearchResults([]);
+    setScreen("search");
   }
 
   async function pickOnMap(lat: number, lng: number) {
@@ -389,7 +404,7 @@ export default function Home() {
               <section className="card searchbar">
                 <div className="tabs">
                   {(["all", "address", "postcode", "makani", "onwani", "coordinates"] as SearchMode[]).map((m) => (
-                    <button key={m} className={`tab ${searchMode === m ? "on" : ""}`} onClick={() => setSearchMode(m)}>
+                    <button key={m} className={`tab ${searchMode === m ? "on" : ""}`} onClick={() => selectSearchMode(m)}>
                       {m === "all" ? "All" : m === "address" ? "Address / Place" : m[0].toUpperCase() + m.slice(1)}
                     </button>
                   ))}
@@ -725,7 +740,7 @@ export default function Home() {
                         <td><Badge text={address.status} /></td>
                         <td>
                           <div className="actions">
-                            <button className="iconbtn" onClick={() => { setSelectedAddress(address); setScreen("search"); }}>View</button>
+                            <button className="iconbtn" onClick={() => viewAddress(address)}>View</button>
                             <button className="iconbtn" onClick={() => editAddress(address)}>Edit</button>
                             <button className="iconbtn danger" onClick={() => deleteAddress(address)}>Delete</button>
                           </div>
