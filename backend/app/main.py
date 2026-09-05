@@ -59,9 +59,11 @@ def generate_zone_identifiers(db: Session, emirate: str) -> tuple[str, str]:
 app = FastAPI(title="UAE Address & Postal Code API", version="1.0.0")
 
 origins = [x.strip() for x in os.getenv("CORS_ORIGINS", "http://localhost:3000").split(",") if x.strip()]
+origin_regex = os.getenv("CORS_ORIGIN_REGEX", "").strip() or None
 app.add_middleware(
     CORSMiddleware,
     allow_origins=origins,
+    allow_origin_regex=origin_regex,
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
