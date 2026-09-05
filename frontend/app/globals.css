@@ -132,7 +132,7 @@ tbody tr:hover,tbody tr.selected{background:#f0f7ff}
 .empty{padding:40px;text-align:center;color:var(--muted)}
 
 /* ===== CRUD form modals ===== */
-.overlay{position:fixed;inset:0;background:rgba(6,24,43,.46);z-index:200;display:flex;align-items:center;justify-content:center;padding:24px}
+.overlay{position:fixed;inset:0;background:rgba(6,24,43,.46);z-index:2000;display:flex;align-items:center;justify-content:center;padding:24px}
 .formpanel{width:min(760px,96vw);max-height:90vh;overflow:auto;background:#fff;border-radius:18px;box-shadow:0 24px 70px rgba(5,25,48,.28);border:1px solid var(--line)}
 .formpanel.wide{width:min(920px,97vw)}
 .formhead{display:flex;justify-content:space-between;align-items:center;padding:18px 20px;border-bottom:1px solid var(--line);position:sticky;top:0;background:#fff;z-index:2}
