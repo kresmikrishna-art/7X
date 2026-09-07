@@ -117,6 +117,7 @@ class ReverseGeocodeOut(BaseModel):
     components: GeocodeComponents
     place_id: str | None = None
     is_business: bool = False
+    place_name: str | None = None
     grid_id: str | None = None
     zone_id: str | None = None
     postal_code: str | None = None

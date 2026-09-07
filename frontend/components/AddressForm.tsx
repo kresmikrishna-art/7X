@@ -149,9 +149,18 @@ export default function AddressForm({
         street_name: rg.components.route,
         area_locality: rg.components.sublocality || rg.components.locality || current.area_locality,
         emirate_admin_area: rg.components.administrative_area || current.emirate_admin_area,
+        // Google's Geocoding API never returns a POI's name itself -- rg.place_name
+        // comes from a separate Places API lookup the backend only does when the
+        // point resolves to a business/POI, so a plain street point leaves these alone.
+        building_name: rg.place_name || current.building_name,
+        organization_name: rg.place_name || current.organization_name,
       }));
       if (gridFound) {
-        setNotice("Fields below marked from Google reverse geocoding — review before saving.");
+        setNotice(
+          rg.place_name
+            ? `Detected "${rg.place_name}" at this location via Google — review before saving.`
+            : "Fields below marked from Google reverse geocoding — review before saving."
+        );
       }
     } catch {
       // Google geocoding is optional (needs GOOGLE_MAPS_API_KEY on the backend) -- skip silently.

@@ -3,6 +3,7 @@ import httpx
 from fastapi import HTTPException
 
 GOOGLE_GEOCODE_URL = "https://maps.googleapis.com/maps/api/geocode/json"
+GOOGLE_PLACE_DETAILS_URL = "https://maps.googleapis.com/maps/api/place/details/json"
 
 COMPONENT_MAP = {
     "street_number": "street_number",
@@ -70,14 +71,34 @@ def forward_geocode(address: str) -> dict:
         "is_business": _is_business(result),
     }
 
+def _place_name(place_id: str | None) -> str | None:
+    """The Geocoding API's reverse lookup never returns a POI's name (see
+    _is_business) -- only the separate Places API does, keyed by the
+    place_id the geocode result already carries."""
+    if not place_id:
+        return None
+    try:
+        resp = httpx.get(GOOGLE_PLACE_DETAILS_URL, params={
+            "place_id": place_id, "fields": "name", "key": _api_key(),
+        }, timeout=10.0)
+        resp.raise_for_status()
+    except httpx.HTTPError:
+        return None
+    data = resp.json()
+    if data.get("status") != "OK":
+        return None
+    return data.get("result", {}).get("name") or None
+
 def reverse_geocode(lat: float, lng: float) -> dict:
     result = _call_google({"latlng": f"{lat},{lng}"})
     loc = result["geometry"]["location"]
+    is_biz = _is_business(result)
     return {
         "formatted_address": result.get("formatted_address", ""),
         "latitude": loc["lat"],
         "longitude": loc["lng"],
         "components": _extract_components(result.get("address_components", [])),
         "place_id": result.get("place_id"),
-        "is_business": _is_business(result),
+        "is_business": is_biz,
+        "place_name": _place_name(result.get("place_id")) if is_biz else None,
     }
