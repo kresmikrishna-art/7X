@@ -30,6 +30,10 @@ type PinDropResult = {
   distance_meters: number | null;
   google_formatted_address: string | null;
   warning: string | null;
+  grid_id: string | null;
+  zone_id: string | null;
+  postal_code: string | null;
+  area: string | null;
 };
 
 const screenTitles: Record<Screen, string> = {
@@ -230,6 +234,10 @@ export default function Home() {
         distance_meters: result.distance_meters ?? null,
         google_formatted_address: result.google_formatted_address ?? null,
         warning: result.warning ?? null,
+        grid_id: result.grid_id ?? null,
+        zone_id: result.zone_id ?? null,
+        postal_code: result.postal_code ?? null,
+        area: result.area ?? null,
       });
     } catch (e: any) {
       setError(e.message);
@@ -1040,6 +1048,21 @@ function PinDropWarning({ pin }: { pin: PinDropResult }) {
 
       <div className="hint">No verified address within 60m of this point. Showing Google's raw reverse-geocoded result instead.</div>
       <div className="formatted">{pin.google_formatted_address || "Google reverse geocoding did not return an address for this point."}</div>
+
+      {pin.grid_id ? (
+        <>
+          <div className="sectitle">Postal grid at this point</div>
+          <div className="hint">This point falls inside a configured postal grid — no address has been registered here yet.</div>
+          <dl className="kv">
+            <dt>Grid ID</dt><dd className="mono">{pin.grid_id}</dd>
+            <dt>Zone ID</dt><dd className="mono">{pin.zone_id}</dd>
+            <dt>Postcode</dt><dd className="mono">{pin.postal_code}</dd>
+            <dt>Area</dt><dd>{pin.area || "—"}</dd>
+          </dl>
+        </>
+      ) : (
+        <div className="hint">This point is also outside any configured postal grid.</div>
+      )}
 
       <div className="sectitle">Pin location</div>
       <dl className="kv">

@@ -78,20 +78,28 @@ export default function MapPanel({
         />
 
         {grids.map((g) => (
+          // Grid polygons bind their own click-to-open-popup handler, which stops
+          // the click from ever reaching the map's own click handler below --
+          // so whenever onMapClick is active (pin-drop / click-to-place), the
+          // grids must be non-interactive or clicking inside one silently does
+          // nothing instead of registering the point.
           <GeoJSON
-            key={`${g.grid_id}-${selectedGrid}`}
+            key={`${g.grid_id}-${selectedGrid}-${onMapClick ? "click" : "view"}`}
             data={g.geometry}
+            interactive={!onMapClick}
             style={{
               weight: g.grid_id === selectedGrid ? 4 : 2,
               opacity: 0.9,
               fillOpacity: g.grid_id === selectedGrid ? 0.35 : 0.12,
             }}
           >
-            <Popup>
-              <b>{g.grid_id}</b><br />
-              {g.zone_id}<br />
-              {g.postal_code}
-            </Popup>
+            {!onMapClick && (
+              <Popup>
+                <b>{g.grid_id}</b><br />
+                {g.zone_id}<br />
+                {g.postal_code}
+              </Popup>
+            )}
           </GeoJSON>
         ))}
 
