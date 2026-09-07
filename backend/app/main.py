@@ -302,15 +302,18 @@ def match_address(lat: float = Query(...), lng: float = Query(...), db: Session 
 
     google_formatted = None
     google_components = None
+    google_place_name = None
     try:
         g = geocoding.reverse_geocode(lat, lng)
         google_formatted = g["formatted_address"]
         google_components = GeocodeComponents(**g["components"])
+        google_place_name = g.get("place_name")
     except HTTPException:
         pass  # Google reverse geocoding is optional (needs GOOGLE_MAPS_API_KEY) -- degrade gracefully.
 
     common = dict(
         google_formatted_address=google_formatted,
+        google_place_name=google_place_name,
         google_components=google_components,
         grid_id=spatial["grid_id"] if spatial else None,
         zone_id=spatial["zone_id"] if spatial else None,

@@ -26,9 +26,11 @@ type SearchMode = "all" | "address" | "postcode" | "makani" | "onwani" | "coordi
 type PinDropResult = {
   lat: number;
   lng: number;
+  loading: boolean;
   matched: boolean;
   distance_meters: number | null;
   google_formatted_address: string | null;
+  google_place_name: string | null;
   warning: string | null;
   grid_id: string | null;
   zone_id: string | null;
@@ -145,16 +147,17 @@ export default function Home() {
     }
 
     setError("");
-    setPinDrop(null);
 
     const coordMatch = q.match(/^\s*(-?\d+(?:\.\d+)?)\s*,\s*(-?\d+(?:\.\d+)?)\s*$/);
     if (coordMatch || mode === "coordinates") {
       if (!coordMatch) {
         setSearchResults([]);
-        setSelectedAddress(null);
         setError('Enter coordinates as "lat,lng" to search by coordinates.');
         return;
       }
+      // Deliberately not clearing selectedAddress/pinDrop here -- pickOnMap sets
+      // the new pin location synchronously as its first action, so the map never
+      // passes through a "no anchor point" state and jumps to a fallback view.
       await pickOnMap(parseFloat(coordMatch[1]), parseFloat(coordMatch[2]));
       return;
     }
@@ -167,13 +170,13 @@ export default function Home() {
       if (mode === "onwani") results = results.filter((a) => normalize(a.onwani_reference).includes(normalize(q)));
 
       if (results.length) {
+        setPinDrop(null);
         setSearchResults(results);
         setSelectedAddress(results[0]);
         return;
       }
 
       setSearchResults([]);
-      setSelectedAddress(null);
 
       // Free-text/place searches also fall back to Google + a dropped map pin when
       // nothing in the system matches; ID lookups (postcode/Makani/Onwani) don't --
@@ -183,7 +186,23 @@ export default function Home() {
           const geo = await api<any>(`/api/v1/geocode?address=${encodeURIComponent(q)}`);
           await pickOnMap(geo.latitude, geo.longitude);
         } catch {
+          setSelectedAddress(null);
+          setPinDrop(null);
           setError("No address found in the system or via Google for this search.");
+        }
+        return;
+      }
+
+      setSelectedAddress(null);
+      setPinDrop(null);
+
+      // A postcode with zero addresses is still a real, registered zone (a
+      // "reserve" zone with no grid/addresses added yet) -- say so instead of
+      // a bare "not found", using the zone list already loaded on this screen.
+      if (mode === "postcode") {
+        const zone = zones.find((z) => normalize(z.postal_code) === normalize(q));
+        if (zone) {
+          setError(`Postcode ${zone.postal_code} is registered (zone ${zone.zone_id} · ${zone.zone_name}) but has no addresses yet.`);
         }
       }
     } catch (e: any) {
@@ -215,24 +234,42 @@ export default function Home() {
 
   async function pickOnMap(lat: number, lng: number) {
     setError("");
-    setPinDrop(null);
+    setSearchResults([]);
+    setSelectedAddress(null);
+    // Set pinDrop with the real coordinates immediately, *before* the lookup
+    // resolves -- this is what keeps the map anchored at the clicked/found
+    // point the whole time instead of losing its anchor (falling back to a
+    // generic overview) and then jumping to the right place once data arrives.
+    setPinDrop({
+      lat,
+      lng,
+      loading: true,
+      matched: false,
+      distance_meters: null,
+      google_formatted_address: null,
+      google_place_name: null,
+      warning: null,
+      grid_id: null,
+      zone_id: null,
+      postal_code: null,
+      area: null,
+    });
     try {
       const result = await api<any>(`/api/v1/addresses/match?lat=${lat}&lng=${lng}`);
 
       if (result.matched && result.address) {
         setSelectedAddress(result.address);
         setSearchResults([result.address]);
-      } else {
-        setSelectedAddress(null);
-        setSearchResults([]);
       }
 
       setPinDrop({
         lat,
         lng,
+        loading: false,
         matched: result.matched,
         distance_meters: result.distance_meters ?? null,
         google_formatted_address: result.google_formatted_address ?? null,
+        google_place_name: result.google_place_name ?? null,
         warning: result.warning ?? null,
         grid_id: result.grid_id ?? null,
         zone_id: result.zone_id ?? null,
@@ -241,6 +278,7 @@ export default function Home() {
       });
     } catch (e: any) {
       setError(e.message);
+      setPinDrop(null);
     } finally {
       setPickMode(false);
     }
@@ -500,10 +538,12 @@ export default function Home() {
                       <div className="hint" style={{ margin: 0 }}>
                         {pickMode
                           ? "Reverse-geocode mode active: click the map."
+                          : pinDrop?.loading
+                          ? `Looking up ${pinDrop.lat.toFixed(5)}, ${pinDrop.lng.toFixed(5)}…`
                           : selectedAddress
                           ? `${selectedAddress.building_name} · ${selectedAddress.area_locality} · ${selectedAddress.grid_id} · ${selectedAddress.postal_code}`
                           : pinDrop && !pinDrop.matched
-                          ? `Pin at ${pinDrop.lat.toFixed(5)}, ${pinDrop.lng.toFixed(5)} · not in system`
+                          ? `Pin at ${pinDrop.lat.toFixed(5)}, ${pinDrop.lng.toFixed(5)} · ${pinDrop.google_place_name ? pinDrop.google_place_name + " · " : ""}not in system`
                           : "Select an address"}
                       </div>
                     </div>
@@ -528,7 +568,9 @@ export default function Home() {
                 </section>
 
                 <section className="card details">
-                  {selectedAddress
+                  {pinDrop?.loading
+                    ? <div className="empty">Looking up this location…</div>
+                    : selectedAddress
                     ? <AddressDetails address={selectedAddress} pinDistance={pinDrop?.matched ? pinDrop.distance_meters : null} />
                     : pinDrop && !pinDrop.matched
                     ? <PinDropWarning pin={pinDrop} />
@@ -1047,7 +1089,12 @@ function PinDropWarning({ pin }: { pin: PinDropResult }) {
       </div>
 
       <div className="hint">No verified address within 100m of this point. Showing Google's raw reverse-geocoded result instead.</div>
-      <div className="formatted">{pin.google_formatted_address || "Google reverse geocoding did not return an address for this point."}</div>
+      <div className="formatted">
+        {pin.google_place_name || pin.google_formatted_address || "Google reverse geocoding did not return an address for this point."}
+      </div>
+      {pin.google_place_name && pin.google_formatted_address && (
+        <div className="hint">{pin.google_formatted_address}</div>
+      )}
 
       {pin.grid_id ? (
         <>

@@ -131,6 +131,7 @@ class AddressMatchOut(BaseModel):
     address: AddressOut | None = None
     distance_meters: float | None = None
     google_formatted_address: str | None = None
+    google_place_name: str | None = None
     google_components: GeocodeComponents | None = None
     grid_id: str | None = None
     zone_id: str | None = None
