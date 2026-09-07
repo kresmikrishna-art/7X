@@ -103,7 +103,7 @@ def nearest_address(db: Session, lat: float, lng: float) -> Address | None:
         return None
     return db.query(Address).filter(Address.id == row["id"]).first()
 
-PIN_MATCH_RADIUS_METERS = 60
+PIN_MATCH_RADIUS_METERS = 100
 
 def nearest_address_within(db: Session, lat: float, lng: float, radius_meters: float) -> tuple[Address | None, float | None]:
     """Nearest address row, but only if it's within radius_meters -- unlike

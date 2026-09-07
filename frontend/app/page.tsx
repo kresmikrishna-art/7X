@@ -1046,7 +1046,7 @@ function PinDropWarning({ pin }: { pin: PinDropResult }) {
         <span className="warn">⚠ {pin.warning || "Address not listed in system"}</span>
       </div>
 
-      <div className="hint">No verified address within 60m of this point. Showing Google's raw reverse-geocoded result instead.</div>
+      <div className="hint">No verified address within 100m of this point. Showing Google's raw reverse-geocoded result instead.</div>
       <div className="formatted">{pin.google_formatted_address || "Google reverse geocoding did not return an address for this point."}</div>
 
       {pin.grid_id ? (
