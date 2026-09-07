@@ -121,3 +121,18 @@ class ReverseGeocodeOut(BaseModel):
     zone_id: str | None = None
     postal_code: str | None = None
     area: str | None = None
+
+class AddressMatchOut(BaseModel):
+    """Result of dropping a pin: either a verified address already in our system
+    near that point, or Google's raw reverse-geocoded address with a warning
+    that it isn't in the system yet."""
+    matched: bool
+    address: AddressOut | None = None
+    distance_meters: float | None = None
+    google_formatted_address: str | None = None
+    google_components: GeocodeComponents | None = None
+    grid_id: str | None = None
+    zone_id: str | None = None
+    postal_code: str | None = None
+    area: str | None = None
+    warning: str | None = None

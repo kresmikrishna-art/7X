@@ -23,11 +23,20 @@ type Zone = {
 type Screen = "search" | "grids" | "postcodes" | "addresses";
 type SearchMode = "all" | "address" | "postcode" | "makani" | "onwani" | "coordinates";
 
+type PinDropResult = {
+  lat: number;
+  lng: number;
+  matched: boolean;
+  distance_meters: number | null;
+  google_formatted_address: string | null;
+  warning: string | null;
+};
+
 const screenTitles: Record<Screen, string> = {
   search: "Address Search",
   grids: "Grid Engine",
   postcodes: "Postcode Management",
-  addresses: "Addresses",
+  addresses: "Address Registry",
 };
 
 function rectanglePolygon(lat: number, lng: number, width = 0.008, height = 0.006) {
@@ -89,6 +98,7 @@ export default function Home() {
   const [searchMode, setSearchMode] = useState<SearchMode>("all");
   const [searchResults, setSearchResults] = useState<Address[]>([]);
   const [pickMode, setPickMode] = useState(false);
+  const [pinDrop, setPinDrop] = useState<PinDropResult | null>(null);
   const [error, setError] = useState("");
 
   const [gridFilter, setGridFilter] = useState("");
@@ -130,16 +140,48 @@ export default function Home() {
       return;
     }
 
+    setError("");
+    setPinDrop(null);
+
+    const coordMatch = q.match(/^\s*(-?\d+(?:\.\d+)?)\s*,\s*(-?\d+(?:\.\d+)?)\s*$/);
+    if (coordMatch || mode === "coordinates") {
+      if (!coordMatch) {
+        setSearchResults([]);
+        setSelectedAddress(null);
+        setError('Enter coordinates as "lat,lng" to search by coordinates.');
+        return;
+      }
+      await pickOnMap(parseFloat(coordMatch[1]), parseFloat(coordMatch[2]));
+      return;
+    }
+
     try {
-      setError("");
       let results = await api<Address[]>(`/api/v1/addresses/search?q=${encodeURIComponent(q)}`);
 
       if (mode === "postcode") results = results.filter((a) => normalize(a.postal_code).includes(normalize(q)));
       if (mode === "makani") results = results.filter((a) => normalize(a.makani_number).includes(normalize(q)));
       if (mode === "onwani") results = results.filter((a) => normalize(a.onwani_reference).includes(normalize(q)));
 
-      setSearchResults(results);
-      if (results.length) setSelectedAddress(results[0]);
+      if (results.length) {
+        setSearchResults(results);
+        setSelectedAddress(results[0]);
+        return;
+      }
+
+      setSearchResults([]);
+      setSelectedAddress(null);
+
+      // Free-text/place searches also fall back to Google + a dropped map pin when
+      // nothing in the system matches; ID lookups (postcode/Makani/Onwani) don't --
+      // a reference number isn't something Google can geocode to a location.
+      if (mode === "all" || mode === "address") {
+        try {
+          const geo = await api<any>(`/api/v1/geocode?address=${encodeURIComponent(q)}`);
+          await pickOnMap(geo.latitude, geo.longitude);
+        } catch {
+          setError("No address found in the system or via Google for this search.");
+        }
+      }
     } catch (e: any) {
       setError(e.message);
     }
@@ -160,6 +202,7 @@ export default function Home() {
 
   function viewAddress(address: Address) {
     setSelectedAddress(address);
+    setPinDrop(null);
     setQuery("");
     setSearchMode("all");
     setSearchResults([]);
@@ -168,14 +211,26 @@ export default function Home() {
 
   async function pickOnMap(lat: number, lng: number) {
     setError("");
+    setPinDrop(null);
     try {
-      const results = await api<Address[]>(`/api/v1/addresses/search?q=${lat},${lng}`);
-      if (results.length) {
-        setSelectedAddress(results[0]);
-        setSearchResults(results);
+      const result = await api<any>(`/api/v1/addresses/match?lat=${lat}&lng=${lng}`);
+
+      if (result.matched && result.address) {
+        setSelectedAddress(result.address);
+        setSearchResults([result.address]);
       } else {
-        setError("No verified address is near that point yet.");
+        setSelectedAddress(null);
+        setSearchResults([]);
       }
+
+      setPinDrop({
+        lat,
+        lng,
+        matched: result.matched,
+        distance_meters: result.distance_meters ?? null,
+        google_formatted_address: result.google_formatted_address ?? null,
+        warning: result.warning ?? null,
+      });
     } catch (e: any) {
       setError(e.message);
     } finally {
@@ -355,13 +410,12 @@ export default function Home() {
         </div>
 
         <nav className="side-nav">
-          <div className="navgrp">Postcode operations</div>
           <NavItem active={screen === "search"} onClick={() => setScreen("search")} icon="⌕" label="Address Search" />
+          <NavItem active={screen === "addresses"} onClick={() => setScreen("addresses")} icon="≡" label="Address Registry" badge={addresses.length} />
+
+          <div className="navgrp">Configuration</div>
           <NavItem active={screen === "grids"} onClick={() => setScreen("grids")} icon="▦" label="Grid Engine" badge={grids.length} />
           <NavItem active={screen === "postcodes"} onClick={() => setScreen("postcodes")} icon="⌖" label="Postcode Management" badge={zones.length} />
-
-          <div className="navgrp">Address registry</div>
-          <NavItem active={screen === "addresses"} onClick={() => setScreen("addresses")} icon="≡" label="Addresses" badge={addresses.length} />
         </nav>
 
         <div className="sfoot"><b>For a world in motion</b><br />UAE Postcode Digital Addressing · showcase prototype</div>
@@ -436,7 +490,13 @@ export default function Home() {
                     <div>
                       <b>Address location &amp; postal grid</b>
                       <div className="hint" style={{ margin: 0 }}>
-                        {pickMode ? "Reverse-geocode mode active: click the map." : selectedAddress ? `${selectedAddress.building_name} · ${selectedAddress.area_locality} · ${selectedAddress.grid_id} · ${selectedAddress.postal_code}` : "Select an address"}
+                        {pickMode
+                          ? "Reverse-geocode mode active: click the map."
+                          : selectedAddress
+                          ? `${selectedAddress.building_name} · ${selectedAddress.area_locality} · ${selectedAddress.grid_id} · ${selectedAddress.postal_code}`
+                          : pinDrop && !pinDrop.matched
+                          ? `Pin at ${pinDrop.lat.toFixed(5)}, ${pinDrop.lng.toFixed(5)} · not in system`
+                          : "Select an address"}
                       </div>
                     </div>
                     <button className="btn btn-ghost btn-sm" onClick={() => setPickMode((v) => !v)}>
@@ -446,7 +506,13 @@ export default function Home() {
                   <MapPanel
                     grids={grids}
                     selectedGrid={selectedAddress?.grid_id}
-                    point={selectedAddress ? { lat: selectedAddress.latitude, lng: selectedAddress.longitude } : null}
+                    point={
+                      selectedAddress
+                        ? { lat: selectedAddress.latitude, lng: selectedAddress.longitude }
+                        : pinDrop
+                        ? { lat: pinDrop.lat, lng: pinDrop.lng }
+                        : null
+                    }
                     onMapClick={pickMode ? pickOnMap : undefined}
                     height={525}
                     showLegend
@@ -455,7 +521,9 @@ export default function Home() {
 
                 <section className="card details">
                   {selectedAddress
-                    ? <AddressDetails address={selectedAddress} />
+                    ? <AddressDetails address={selectedAddress} pinDistance={pinDrop?.matched ? pinDrop.distance_meters : null} />
+                    : pinDrop && !pinDrop.matched
+                    ? <PinDropWarning pin={pinDrop} />
                     : <div className="empty">Select an address.</div>}
                 </section>
               </div>
@@ -482,7 +550,7 @@ export default function Home() {
                     </thead>
                     <tbody>
                       {results.map((address) => (
-                        <tr key={address.address_id} onClick={() => setSelectedAddress(address)}>
+                        <tr key={address.address_id} onClick={() => { setSelectedAddress(address); setPinDrop(null); }}>
                           <td className="mono strong">{address.address_id}</td>
                           <td>{address.building_name}, {address.street_name}</td>
                           <td className="mono">{address.postal_code}</td>
@@ -490,7 +558,7 @@ export default function Home() {
                           <td><Badge text={address.status} /></td>
                           <td>
                             <div className="actions">
-                              <button className="iconbtn" onClick={(e) => { e.stopPropagation(); setSelectedAddress(address); }}>View</button>
+                              <button className="iconbtn" onClick={(e) => { e.stopPropagation(); setSelectedAddress(address); setPinDrop(null); }}>View</button>
                               <button className="iconbtn" onClick={(e) => { e.stopPropagation(); editAddress(address); }}>Edit</button>
                               <button className="iconbtn danger" onClick={(e) => { e.stopPropagation(); deleteAddress(address); }}>Delete</button>
                             </div>
@@ -701,7 +769,7 @@ export default function Home() {
             <section className="card tablecard">
               <div className="pagehead" style={{ padding: "16px 16px 0", margin: 0 }}>
                 <div>
-                  <h1 style={{ fontSize: 22 }}>Addresses</h1>
+                  <h1 style={{ fontSize: 22 }}>Address Registry</h1>
                   <p>Canonical addresses linked to Grid ID, Zone ID and Postcode.</p>
                 </div>
                 <span className="pill">{addresses.length} verified addresses</span>
@@ -910,7 +978,7 @@ function Stat({ label, value, detail }: { label: string; value: number; detail: 
   );
 }
 
-function AddressDetails({ address }: { address: Address }) {
+function AddressDetails({ address, pinDistance }: { address: Address; pinDistance?: number | null }) {
   const s42 = address.canonical_s42;
   const formatted = s42
     ? [s42.line1, s42.line2, s42.line3, s42.line4, s42.line5].filter(Boolean).join("\n")
@@ -922,6 +990,10 @@ function AddressDetails({ address }: { address: Address }) {
         <span className="status">✓ {address.status}</span>
         <span className="demo">Prototype data</span>
       </div>
+
+      {pinDistance != null && (
+        <div className="hint" style={{ marginBottom: 8 }}>Matched to a verified address {pinDistance}m from the located point.</div>
+      )}
 
       <div className="addr-id">{address.address_id}</div>
       <div className="hint">Canonical structured address · UPU S42-aligned template {address.template_version}</div>
@@ -954,6 +1026,25 @@ function AddressDetails({ address }: { address: Address }) {
         <dt>country_code</dt><dd>{address.country_code}</dd>
         <dt>country_name</dt><dd>{address.country_name}</dd>
         <dt>template_version</dt><dd className="mono">{address.template_version}</dd>
+      </dl>
+    </div>
+  );
+}
+
+function PinDropWarning({ pin }: { pin: PinDropResult }) {
+  return (
+    <div>
+      <div className="statusline">
+        <span className="warn">⚠ {pin.warning || "Address not listed in system"}</span>
+      </div>
+
+      <div className="hint">No verified address within 60m of this point. Showing Google's raw reverse-geocoded result instead.</div>
+      <div className="formatted">{pin.google_formatted_address || "Google reverse geocoding did not return an address for this point."}</div>
+
+      <div className="sectitle">Pin location</div>
+      <dl className="kv">
+        <dt>Latitude</dt><dd className="mono">{pin.lat.toFixed(5)}</dd>
+        <dt>Longitude</dt><dd className="mono">{pin.lng.toFixed(5)}</dd>
       </dl>
     </div>
   );

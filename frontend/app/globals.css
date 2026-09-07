@@ -83,6 +83,7 @@ button{cursor:pointer}
 .statusline{display:flex;gap:8px;align-items:center;margin-bottom:10px}
 .status{background:var(--green-bg);color:var(--green);font-weight:900;font-size:11px;padding:6px 8px;border-radius:999px}
 .demo{background:var(--amber-bg);color:var(--amber);font-weight:900;font-size:11px;padding:6px 8px;border-radius:999px}
+.warn{background:var(--amber-bg);color:var(--amber);font-weight:900;font-size:11px;padding:6px 8px;border-radius:999px}
 .addr-id{font-size:22px;color:var(--navy);font-weight:900;margin:5px 0}
 .formatted{background:#f5f8fc;border:1px solid var(--line);border-radius:13px;padding:12px 13px;margin:12px 0;font-weight:700;line-height:1.5;color:#263b52;white-space:pre-wrap;font-family:inherit}
 .sectitle{font-size:12px;text-transform:uppercase;letter-spacing:.08em;color:var(--muted);font-weight:900;margin:17px 0 7px}

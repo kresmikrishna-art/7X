@@ -11,7 +11,7 @@ from .database import get_db
 from .models import PostalZone, PostalGrid, Address
 from .schemas import (
     ZoneCreate, ZoneAutoCreate, ZoneOut, GridCreate, GridOut, AddressCreate, AddressOut, SpatialResolveOut,
-    CanonicalS42Out, GeocodeOut, ReverseGeocodeOut, GeocodeComponents,
+    CanonicalS42Out, GeocodeOut, ReverseGeocodeOut, GeocodeComponents, AddressMatchOut,
 )
 
 EMIRATE_CODES = {
@@ -102,6 +102,23 @@ def nearest_address(db: Session, lat: float, lng: float) -> Address | None:
     if not row:
         return None
     return db.query(Address).filter(Address.id == row["id"]).first()
+
+PIN_MATCH_RADIUS_METERS = 60
+
+def nearest_address_within(db: Session, lat: float, lng: float, radius_meters: float) -> tuple[Address | None, float | None]:
+    """Nearest address row, but only if it's within radius_meters -- unlike
+    nearest_address(), which always returns the closest row regardless of how
+    far away it actually is."""
+    row = db.execute(text("""
+        SELECT id, ST_Distance(point::geography, ST_SetSRID(ST_Point(:lng,:lat),4326)::geography) AS distance_m
+        FROM address
+        ORDER BY point <-> ST_SetSRID(ST_Point(:lng,:lat),4326)
+        LIMIT 1
+    """), {"lat": lat, "lng": lng}).mappings().first()
+    if not row or row["distance_m"] > radius_meters:
+        return None, None
+    a = db.query(Address).filter(Address.id == row["id"]).first()
+    return a, row["distance_m"]
 
 COORD_PATTERN = re.compile(r"^\s*(-?\d+(?:\.\d+)?)\s*,\s*(-?\d+(?:\.\d+)?)\s*$")
 
@@ -274,6 +291,46 @@ def search_addresses(q: str, db: Session = Depends(get_db)):
         Address.search_aliases.ilike(like),
     )).order_by(Address.address_id).limit(50).all()
     return [address_out(a) for a in rows]
+
+@app.get("/api/v1/addresses/match", response_model=AddressMatchOut)
+def match_address(lat: float = Query(...), lng: float = Query(...), db: Session = Depends(get_db)):
+    """Drop-a-pin lookup: returns the verified system address if one exists
+    within PIN_MATCH_RADIUS_METERS of the point, otherwise Google's raw
+    reverse-geocoded address plus a warning that it isn't in the system yet."""
+    spatial = resolve_point(db, lat, lng)
+    matched_address, distance_m = nearest_address_within(db, lat, lng, PIN_MATCH_RADIUS_METERS)
+
+    google_formatted = None
+    google_components = None
+    try:
+        g = geocoding.reverse_geocode(lat, lng)
+        google_formatted = g["formatted_address"]
+        google_components = GeocodeComponents(**g["components"])
+    except HTTPException:
+        pass  # Google reverse geocoding is optional (needs GOOGLE_MAPS_API_KEY) -- degrade gracefully.
+
+    common = dict(
+        google_formatted_address=google_formatted,
+        google_components=google_components,
+        grid_id=spatial["grid_id"] if spatial else None,
+        zone_id=spatial["zone_id"] if spatial else None,
+        postal_code=spatial["postal_code"] if spatial else None,
+        area=spatial["area"] if spatial else None,
+    )
+
+    if matched_address:
+        return AddressMatchOut(
+            matched=True,
+            address=address_out(matched_address),
+            distance_meters=round(distance_m, 1),
+            **common,
+        )
+
+    return AddressMatchOut(
+        matched=False,
+        warning="Address not listed in system",
+        **common,
+    )
 
 @app.get("/api/v1/addresses/{address_id}", response_model=AddressOut)
 def get_address(address_id: str, db: Session = Depends(get_db)):
